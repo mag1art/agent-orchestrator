@@ -59,7 +59,7 @@ export function createGitLabTracker(cfg: GitLabPluginConfig = {}): Tracker {
         id: String(data.iid),
         title: data.title,
         description: data.description ?? "",
-        url: data.web_url ?? data.web_url,
+        url: data.web_url ?? "",
         state: mapState(data.state),
         labels: (data.labels ?? []) as string[],
         assignee: (data.assignees && data.assignees[0]?.username) ?? undefined,

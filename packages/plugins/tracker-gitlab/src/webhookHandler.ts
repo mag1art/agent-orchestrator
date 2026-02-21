@@ -1,18 +1,19 @@
 ﻿import crypto from "node:crypto";
 import type { ProjectConfig } from "@composio/ao-core";
 
-/**
- * Validate incoming GitLab webhook and normalize to a minimal event shape.
- *
- * Usage:
- *   const ev = handleWebhook(headers, rawBody, config.webhookSecret);
- *   // ev.type, ev.action, ev.issue?.iid, ev.merge_request?.iid, ev.project
- */
 export type GitLabWebhookEvent =
     | { type: "issue"; action: string; issue: any; project: any }
     | { type: "merge_request"; action: string; merge_request: any; project: any }
     | { type: "unknown"; payload: any };
 
+/**
+ * Validate and normalize a GitLab webhook payload.
+ *
+ * - If `secret` is provided, perform a timing-safe equality check between
+ *   the header and the secret. To avoid leaking the secret length, both
+ *   values are hashed with SHA-256 and the fixed-size digests are compared
+ *   with crypto.timingSafeEqual.
+ */
 export function handleWebhook(
     headers: Record<string, string | undefined>,
     payload: any,
@@ -21,16 +22,26 @@ export function handleWebhook(
     const tokenHeader = headers["x-gitlab-token"] ?? headers["X-Gitlab-Token"];
 
     if (secret) {
-        // secret provided → validate header
-        if (!tokenHeader) {
-            throw new Error("Invalid webhook token");
+        // Normalize to strings (use empty string when header missing) so the same
+        // operations run regardless of presence of header. This avoids early returns
+        // that can leak information via timing.
+        const headerStr = String(tokenHeader ?? "");
+        const secretStr = String(secret);
+
+        // Hash both values to fixed-length buffers (SHA-256 -> 32 bytes) to prevent
+        // length-based timing leaks, then use timingSafeEqual.
+        const headerHash = crypto.createHash("sha256").update(headerStr, "utf8").digest();
+        const secretHash = crypto.createHash("sha256").update(secretStr, "utf8").digest();
+
+        // timingSafeEqual requires same-length buffers; hashing ensures that.
+        let ok = false;
+        try {
+            ok = crypto.timingSafeEqual(headerHash, secretHash);
+        } catch {
+            ok = false;
         }
 
-        // timingSafeEqual accepts only Buffer/TypedArray/DataView and both inputs must be same length.
-        const a = Buffer.from(String(tokenHeader), "utf8");
-        const b = Buffer.from(String(secret), "utf8");
-
-        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        if (!ok) {
             throw new Error("Invalid webhook token");
         }
     }

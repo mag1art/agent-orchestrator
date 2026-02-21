@@ -1,4 +1,5 @@
 import type { ProjectConfig } from "@composio/ao-core";
+import * as crypto from 'crypto';
 
 /**
  * Validate incoming GitLab webhook and normalize to a minimal event shape.
@@ -18,7 +19,7 @@ export function handleWebhook(
   secret?: string,
 ): GitLabWebhookEvent {
   const tokenHeader = headers["x-gitlab-token"] ?? headers["X-Gitlab-Token"];
-  if (secret && tokenHeader !== secret) {
+  if (secret && crypto.timingSafeEqual(tokenHeader,secret)) {
     throw new Error("Invalid webhook token");
   }
 
